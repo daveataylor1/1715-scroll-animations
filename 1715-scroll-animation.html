@@ -54,6 +54,7 @@ require([
 
   let routeGraphic;
   let densifiedLine;
+  let currentPercent = 0; // track current progress globally
 
   view.when(async () => {
 
@@ -88,18 +89,22 @@ require([
     // Hide the original layer
     routeLayer.visible = false;
 
-    // Animate from 0 → 100% on load
-    animateTo(0, 1, DURATION);
+    // Animate from currentPercent → 100% on load
+    animateTo(currentPercent, 1, DURATION);
 
   });
 
+  // Draw the line up to a certain percent
   function drawToPercent(percent) {
     if (!densifiedLine) return;
+
+    currentPercent = Math.max(0, Math.min(percent, 1)); // clamp 0→1
 
     const path = densifiedLine.paths[0];
     const vertexCount = path.length;
 
-    const targetIndex = Math.min(Math.floor(vertexCount * percent), vertexCount - 1);
+    // Always include last vertex when percent = 1
+    const targetIndex = Math.min(Math.floor(vertexCount * currentPercent), vertexCount - 1);
 
     routeGraphic.geometry = {
       type: "polyline",
@@ -108,13 +113,14 @@ require([
     };
   }
 
+  // Animate from startPercent → endPercent smoothly
   function animateTo(startPercent, endPercent, duration) {
     const startTime = performance.now();
 
     function step(timestamp) {
       const progress = Math.min((timestamp - startTime) / duration, 1);
-      const currentPercent = startPercent + (endPercent - startPercent) * progress;
-      drawToPercent(currentPercent);
+      const current = startPercent + (endPercent - startPercent) * progress;
+      drawToPercent(current);
 
       if (progress < 1) {
         requestAnimationFrame(step);
