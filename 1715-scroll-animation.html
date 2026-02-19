@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>1715 Fleet Route Animation</title>
+<title>1715 Fleet Route Slide</title>
 
 <link rel="stylesheet"
   href="https://js.arcgis.com/4.29/esri/themes/light/main.css" />
@@ -29,12 +29,15 @@ require([
   "esri/geometry/geometryEngineAsync"
 ], function(WebMap, MapView, Graphic, geometryEngineAsync) {
 
-  // Query parameters
+  // -----------------------------
+  // GET PARAMETERS FROM QUERY STRING
+  // -----------------------------
   const urlParams = new URLSearchParams(window.location.search);
+
   const OBJECTID = parseInt(urlParams.get("objectid") || "6");
-  const CENTER = urlParams.get("center") || "-79,25";
-  const ZOOM = parseFloat(urlParams.get("zoom") || "6");
-  const DURATION = parseInt(urlParams.get("duration") || "2000");
+  const CENTER  = urlParams.get("center") || "-79,25"; // lon,lat
+  const ZOOM    = parseFloat(urlParams.get("zoom") || "6");
+  const DURATION = parseInt(urlParams.get("duration") || "2000"); // milliseconds
 
   const [lon, lat] = CENTER.split(",").map(Number);
 
@@ -52,31 +55,9 @@ require([
   let routeGraphic;
   let densifiedLine;
 
-  view.when(async () => {
-    const routeLayer = webmap.layers.find(l => l.title === "1715_routes");
-    const result = await routeLayer.queryFeatures({
-      where: `OBJECTID = ${OBJECTID}`,
-      returnGeometry: true,
-      outFields: ["*"]
-    });
-
-    if (!result.features.length) return;
-
-    densifiedLine = await geometryEngineAsync.densify(result.features[0].geometry, 2000, "meters");
-    const symbol = routeLayer.renderer.getSymbol(result.features[0]);
-
-    routeGraphic = new Graphic({
-      geometry: null,
-      symbol: symbol
-    });
-
-    view.graphics.add(routeGraphic);
-    routeLayer.visible = false;
-
-    // Play animation on load
-    playAnimation();
-  });
-
+  // -----------------------------
+  // DRAW FUNCTIONS
+  // -----------------------------
   function drawToPercent(percent) {
     if (!densifiedLine) return;
     percent = Math.max(0, Math.min(percent, 1));
@@ -99,14 +80,46 @@ require([
     requestAnimationFrame(step);
   }
 
-  // Public function to trigger animation from outside if needed
   function playAnimation() {
     animateTo(0, 1, DURATION);
   }
 
-  window.playAnimation = playAnimation; // optional: call from parent via postMessage
+  // -----------------------------
+  // LOAD ROUTE AND TRIGGER ANIMATION
+  // -----------------------------
+  view.when(async () => {
+    const routeLayer = webmap.layers.find(l => l.title === "1715_routes");
+    const result = await routeLayer.queryFeatures({
+      where: `OBJECTID = ${OBJECTID}`,
+      returnGeometry: true,
+      outFields: ["*"]
+    });
 
-});
+    if (!result.features.length) {
+      console.error("Feature not found:", OBJECTID);
+      return;
+    }
+
+    const fullLine = result.features[0].geometry;
+
+    densifiedLine = await geometryEngineAsync.densify(fullLine, 2000, "meters");
+
+    const symbol = routeLayer.renderer.getSymbol(result.features[0]);
+
+    routeGraphic = new Graphic({
+      geometry: null,
+      symbol: symbol
+    });
+
+    view.graphics.add(routeGraphic);
+    routeLayer.visible = false;
+
+    // Play animation with short delay to ensure the slide is visible
+    setTimeout(() => {
+      playAnimation();
+    }, 200);
+  });
+
 </script>
 </body>
 </html>
