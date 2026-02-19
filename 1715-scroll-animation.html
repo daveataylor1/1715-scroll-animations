@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>1715 Fleet Animation</title>
+<title>1715 Fleet Progressive Animation</title>
 
 <link rel="stylesheet"
   href="https://js.arcgis.com/4.29/esri/themes/light/main.css" />
@@ -29,6 +29,14 @@ require([
   "esri/geometry/geometryEngineAsync"
 ], function(WebMap, MapView, Graphic, geometryEngineAsync) {
 
+  // -----------------------------
+  // EDIT THESE PER PANEL
+  // -----------------------------
+  const START_PERCENT = 0.0;  // 0% = start of route
+  const END_PERCENT   = 0.25; // 25% = end of this panel
+  const ANIMATION_DURATION = 2000; // milliseconds
+  // -----------------------------
+
   const webmap = new WebMap({
     portalItem: { id: "8a1ca0f2e04941f895149c09fcc956df" }
   });
@@ -40,13 +48,13 @@ require([
 
   let routeGraphic;
   let densifiedLine;
-  let animationFrame;
-  let currentPercent = 0;
 
   view.when(async () => {
 
+    // Grab the route layer
     const routeLayer = webmap.layers.find(l => l.title === "1715_routes");
 
+    // Query OBJECTID = 6
     const result = await routeLayer.queryFeatures({
       where: "OBJECTID = 6",
       returnGeometry: true,
@@ -55,6 +63,7 @@ require([
 
     const fullLine = result.features[0].geometry;
 
+    // Densify for smooth animation
     densifiedLine = await geometryEngineAsync.densify(fullLine, 2000, "meters");
 
     // Preserve original symbology
@@ -67,11 +76,15 @@ require([
 
     view.graphics.add(routeGraphic);
 
+    // Hide original layer so only animated line shows
     routeLayer.visible = false;
+
+    // Animate automatically on panel load
+    animateTo(START_PERCENT, END_PERCENT, ANIMATION_DURATION);
+
   });
 
   function drawToPercent(percent) {
-
     if (!densifiedLine) return;
 
     const path = densifiedLine.paths[0];
@@ -85,38 +98,22 @@ require([
     };
   }
 
-  function animateTo(targetPercent, duration = 2000) {
+  function animateTo(startPercent, endPercent, duration) {
 
-    cancelAnimationFrame(animationFrame);
-
-    const startPercent = currentPercent;
     const startTime = performance.now();
 
     function step(timestamp) {
       const progress = Math.min((timestamp - startTime) / duration, 1);
-      currentPercent = startPercent + (targetPercent - startPercent) * progress;
+      const currentPercent = startPercent + (endPercent - startPercent) * progress;
       drawToPercent(currentPercent);
 
       if (progress < 1) {
-        animationFrame = requestAnimationFrame(step);
+        requestAnimationFrame(step);
       }
     }
 
-    animationFrame = requestAnimationFrame(step);
+    requestAnimationFrame(step);
   }
-
-  // Listen for StoryMaps messages
-  window.addEventListener("message", (event) => {
-
-    if (event.data === "animateRoute") {
-      animateTo(1);
-    }
-
-    if (event.data === "resetRoute") {
-      animateTo(0);
-    }
-
-  });
 
 });
 </script>
