@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>1715 Fleet Animation</title>
+
+<link rel="stylesheet"
+  href="https://js.arcgis.com/4.29/esri/themes/light/main.css" />
+<script src="https://js.arcgis.com/4.29/"></script>
+
+<style>
+  html, body, #viewDiv {
+    margin:0;
+    padding:0;
+    height:100%;
+    width:100%;
+  }
+</style>
+</head>
+
+<body>
+<div id="viewDiv"></div>
+
+<script>
+require([
+  "esri/WebMap",
+  "esri/views/MapView",
+  "esri/Graphic",
+  "esri/geometry/geometryEngineAsync"
+], function(WebMap, MapView, Graphic, geometryEngineAsync) {
+
+  const webmap = new WebMap({
+    portalItem: { id: "8a1ca0f2e04941f895149c09fcc956df" }
+  });
+
+  const view = new MapView({
+    container: "viewDiv",
+    map: webmap
+  });
+
+  let routeGraphic;
+  let densifiedLine;
+  let animationFrame;
+  let currentPercent = 0;
+
+  view.when(async () => {
+
+    const routeLayer = webmap.layers.find(l => l.title === "1715_routes");
+
+    const result = await routeLayer.queryFeatures({
+      where: "OBJECTID = 6",
+      returnGeometry: true,
+      outFields: ["*"]
+    });
+
+    const fullLine = result.features[0].geometry;
+
+    densifiedLine = await geometryEngineAsync.densify(fullLine, 2000, "meters");
+
+    // Preserve original symbology
+    const symbol = routeLayer.renderer.getSymbol(result.features[0]);
+
+    routeGraphic = new Graphic({
+      geometry: null,
+      symbol: symbol
+    });
+
+    view.graphics.add(routeGraphic);
+
+    routeLayer.visible = false;
+  });
+
+  function drawToPercent(percent) {
+
+    if (!densifiedLine) return;
+
+    const path = densifiedLine.paths[0];
+    const vertexCount = path.length;
+    const targetIndex = Math.floor(vertexCount * percent);
+
+    routeGraphic.geometry = {
+      type: "polyline",
+      paths: [path.slice(0, targetIndex + 1)],
+      spatialReference: densifiedLine.spatialReference
+    };
+  }
+
+  function animateTo(targetPercent, duration = 2000) {
+
+    cancelAnimationFrame(animationFrame);
+
+    const startPercent = currentPercent;
+    const startTime = performance.now();
+
+    function step(timestamp) {
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      currentPercent = startPercent + (targetPercent - startPercent) * progress;
+      drawToPercent(currentPercent);
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(step);
+      }
+    }
+
+    animationFrame = requestAnimationFrame(step);
+  }
+
+  // Listen for StoryMaps messages
+  window.addEventListener("message", (event) => {
+
+    if (event.data === "animateRoute") {
+      animateTo(1);
+    }
+
+    if (event.data === "resetRoute") {
+      animateTo(0);
+    }
+
+  });
+
+});
+</script>
+</body>
+</html>
