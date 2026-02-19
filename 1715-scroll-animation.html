@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>1715 Fleet Progressive Animation</title>
+<title>1715 Fleet Route Animation</title>
 
 <link rel="stylesheet"
   href="https://js.arcgis.com/4.29/esri/themes/light/main.css" />
@@ -30,12 +30,16 @@ require([
 ], function(WebMap, MapView, Graphic, geometryEngineAsync) {
 
   // -----------------------------
-  // EDIT THESE PER PANEL
+  // GET PARAMETERS FROM QUERY STRING
   // -----------------------------
-  const START_PERCENT = 0.0;  // 0% = start of route
-  const END_PERCENT   = 1; // 25% = end of this panel
-  const ANIMATION_DURATION = 2000; // milliseconds
-  // -----------------------------
+  const urlParams = new URLSearchParams(window.location.search);
+
+  const OBJECTID = parseInt(urlParams.get("objectid") || "6");
+  const CENTER  = urlParams.get("center") || "-79,25"; // lon,lat
+  const ZOOM    = parseFloat(urlParams.get("zoom") || "6");
+  const DURATION = parseInt(urlParams.get("duration") || "2000"); // ms
+
+  const [lon, lat] = CENTER.split(",").map(Number);
 
   const webmap = new WebMap({
     portalItem: { id: "8a1ca0f2e04941f895149c09fcc956df" }
@@ -43,7 +47,9 @@ require([
 
   const view = new MapView({
     container: "viewDiv",
-    map: webmap
+    map: webmap,
+    center: [lon, lat],
+    zoom: ZOOM
   });
 
   let routeGraphic;
@@ -51,15 +57,18 @@ require([
 
   view.when(async () => {
 
-    // Grab the route layer
     const routeLayer = webmap.layers.find(l => l.title === "1715_routes");
 
-    // Query OBJECTID = 6
     const result = await routeLayer.queryFeatures({
-      where: "OBJECTID = 6",
+      where: `OBJECTID = ${OBJECTID}`,
       returnGeometry: true,
       outFields: ["*"]
     });
+
+    if (!result.features.length) {
+      console.error("Feature not found:", OBJECTID);
+      return;
+    }
 
     const fullLine = result.features[0].geometry;
 
@@ -76,11 +85,11 @@ require([
 
     view.graphics.add(routeGraphic);
 
-    // Hide original layer so only animated line shows
+    // Hide the original layer
     routeLayer.visible = false;
 
-    // Animate automatically on panel load
-    animateTo(START_PERCENT, END_PERCENT, ANIMATION_DURATION);
+    // Animate from 0 → 100% on load
+    animateTo(0, 1, DURATION);
 
   });
 
@@ -89,7 +98,8 @@ require([
 
     const path = densifiedLine.paths[0];
     const vertexCount = path.length;
-    const targetIndex = Math.floor(vertexCount * percent);
+
+    const targetIndex = Math.min(Math.floor(vertexCount * percent), vertexCount - 1);
 
     routeGraphic.geometry = {
       type: "polyline",
@@ -99,7 +109,6 @@ require([
   }
 
   function animateTo(startPercent, endPercent, duration) {
-
     const startTime = performance.now();
 
     function step(timestamp) {
@@ -119,4 +128,3 @@ require([
 </script>
 </body>
 </html>
-
