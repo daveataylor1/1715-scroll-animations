@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>1715 Fleet Scroll-Synced Animation</title>
+<title>1715 Fleet Route Animation</title>
 
 <link rel="stylesheet"
   href="https://js.arcgis.com/4.29/esri/themes/light/main.css" />
@@ -37,6 +37,7 @@ require([
   const OBJECTID = parseInt(urlParams.get("objectid") || "6");
   const CENTER  = urlParams.get("center") || "-79,25"; // lon,lat
   const ZOOM    = parseFloat(urlParams.get("zoom") || "6");
+  const DURATION = parseInt(urlParams.get("duration") || "2000"); // ms
 
   const [lon, lat] = CENTER.split(",").map(Number);
 
@@ -53,6 +54,7 @@ require([
 
   let routeGraphic;
   let densifiedLine;
+  let currentPercent = 0; // track current progress globally
 
   view.when(async () => {
 
@@ -71,8 +73,10 @@ require([
 
     const fullLine = result.features[0].geometry;
 
+    // Densify for smooth animation
     densifiedLine = await geometryEngineAsync.densify(fullLine, 2000, "meters");
 
+    // Preserve original symbology
     const symbol = routeLayer.renderer.getSymbol(result.features[0]);
 
     routeGraphic = new Graphic({
@@ -81,25 +85,26 @@ require([
     });
 
     view.graphics.add(routeGraphic);
+
+    // Hide the original layer
     routeLayer.visible = false;
 
-    // Draw initial position
-    updateLineFromScroll();
-
-    // Listen for StoryMap scroll / resize events
-    window.addEventListener("scroll", updateLineFromScroll, { passive: true });
-    window.addEventListener("resize", updateLineFromScroll);
+    // Animate from currentPercent → 100% on load
+    animateTo(currentPercent, 1, DURATION);
 
   });
 
+  // Draw the line up to a certain percent
   function drawToPercent(percent) {
     if (!densifiedLine) return;
 
-    percent = Math.max(0, Math.min(percent, 1)); // clamp 0→1
+    currentPercent = Math.max(0, Math.min(percent, 1)); // clamp 0→1
 
     const path = densifiedLine.paths[0];
     const vertexCount = path.length;
-    const targetIndex = Math.min(Math.floor(vertexCount * percent), vertexCount - 1);
+
+    // Always include last vertex when percent = 1
+    const targetIndex = Math.min(Math.floor(vertexCount * currentPercent), vertexCount - 1);
 
     routeGraphic.geometry = {
       type: "polyline",
@@ -108,18 +113,21 @@ require([
     };
   }
 
-  function updateLineFromScroll() {
-    if (!densifiedLine) return;
+  // Animate from startPercent → endPercent smoothly
+  function animateTo(startPercent, endPercent, duration) {
+    const startTime = performance.now();
 
-    // Get iframe bounds relative to viewport
-    const rect = document.body.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
+    function step(timestamp) {
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const current = startPercent + (endPercent - startPercent) * progress;
+      drawToPercent(current);
 
-    // Compute visible fraction of panel
-    const visibleTop = Math.max(0, viewportHeight - rect.top);
-    const visiblePercent = Math.min(visibleTop / rect.height, 1);
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      }
+    }
 
-    drawToPercent(visiblePercent);
+    requestAnimationFrame(step);
   }
 
 });
