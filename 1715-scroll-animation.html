@@ -29,15 +29,12 @@ require([
   "esri/geometry/geometryEngineAsync"
 ], function(WebMap, MapView, Graphic, geometryEngineAsync) {
 
-  // -----------------------------
-  // GET PARAMETERS FROM QUERY STRING
-  // -----------------------------
+  // Query parameters
   const urlParams = new URLSearchParams(window.location.search);
-
   const OBJECTID = parseInt(urlParams.get("objectid") || "6");
-  const CENTER  = urlParams.get("center") || "-79,25"; // lon,lat
-  const ZOOM    = parseFloat(urlParams.get("zoom") || "6");
-  const DURATION = parseInt(urlParams.get("duration") || "2000"); // ms
+  const CENTER = urlParams.get("center") || "-79,25";
+  const ZOOM = parseFloat(urlParams.get("zoom") || "6");
+  const DURATION = parseInt(urlParams.get("duration") || "2000");
 
   const [lon, lat] = CENTER.split(",").map(Number);
 
@@ -56,26 +53,16 @@ require([
   let densifiedLine;
 
   view.when(async () => {
-
     const routeLayer = webmap.layers.find(l => l.title === "1715_routes");
-
     const result = await routeLayer.queryFeatures({
       where: `OBJECTID = ${OBJECTID}`,
       returnGeometry: true,
       outFields: ["*"]
     });
 
-    if (!result.features.length) {
-      console.error("Feature not found:", OBJECTID);
-      return;
-    }
+    if (!result.features.length) return;
 
-    const fullLine = result.features[0].geometry;
-
-    // Densify for smooth animation
-    densifiedLine = await geometryEngineAsync.densify(fullLine, 2000, "meters");
-
-    // Preserve original symbology
+    densifiedLine = await geometryEngineAsync.densify(result.features[0].geometry, 2000, "meters");
     const symbol = routeLayer.renderer.getSymbol(result.features[0]);
 
     routeGraphic = new Graphic({
@@ -84,45 +71,40 @@ require([
     });
 
     view.graphics.add(routeGraphic);
-
-    // Hide the original layer
     routeLayer.visible = false;
 
-    // Animate from 0 → 100% on load
-    animateTo(0, 1, DURATION);
-
+    // Play animation on load
+    playAnimation();
   });
 
   function drawToPercent(percent) {
     if (!densifiedLine) return;
-
+    percent = Math.max(0, Math.min(percent, 1));
     const path = densifiedLine.paths[0];
-    const vertexCount = path.length;
-
-    const targetIndex = Math.min(Math.floor(vertexCount * percent), vertexCount - 1);
-
+    const index = Math.min(Math.floor(path.length * percent), path.length - 1);
     routeGraphic.geometry = {
       type: "polyline",
-      paths: [path.slice(0, targetIndex + 1)],
+      paths: [path.slice(0, index + 1)],
       spatialReference: densifiedLine.spatialReference
     };
   }
 
   function animateTo(startPercent, endPercent, duration) {
     const startTime = performance.now();
-
-    function step(timestamp) {
-      const progress = Math.min((timestamp - startTime) / duration, 1);
-      const currentPercent = startPercent + (endPercent - startPercent) * progress;
-      drawToPercent(currentPercent);
-
-      if (progress < 1) {
-        requestAnimationFrame(step);
-      }
+    function step(ts) {
+      const progress = Math.min((ts - startTime) / duration, 1);
+      drawToPercent(startPercent + (endPercent - startPercent) * progress);
+      if (progress < 1) requestAnimationFrame(step);
     }
-
     requestAnimationFrame(step);
   }
+
+  // Public function to trigger animation from outside if needed
+  function playAnimation() {
+    animateTo(0, 1, DURATION);
+  }
+
+  window.playAnimation = playAnimation; // optional: call from parent via postMessage
 
 });
 </script>
